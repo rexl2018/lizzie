@@ -43,9 +43,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.StyleSheet;
+import org.jfree.graphics2d.svg.SVGGraphics2D;
+import org.jfree.graphics2d.svg.SVGUtils;
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 /** The window used to display the game. */
 public class LizzieFrame extends MainFrame {
@@ -1316,6 +1320,10 @@ public class LizzieFrame extends MainFrame {
     return boardRenderer.incrementDisplayedBranchLength(n);
   }
 
+  public void addSuggestionAsBranch() {
+    boardRenderer.addSuggestionAsBranch();
+  }
+
   public void copySgf() {
     try {
       // Get sgf content from game
@@ -1489,6 +1497,72 @@ public class LizzieFrame extends MainFrame {
     countResults.button.setText(resourceBundle.getString("CountDialog.estimateButton.clickone"));
     if (byToolBar) countResults.setVisible(false);
   }
+
+  public void saveImage() {
+    JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
+    JFileChooser chooser = new JFileChooser(filesystem.getString("last-folder"));
+    chooser.setAcceptAllFileFilterUsed(false);
+    //    String writerNames[] = ImageIO.getWriterFormatNames();
+    FileNameExtensionFilter filter1 = new FileNameExtensionFilter("*.svg", "SVG");
+    // FileNameExtensionFilter filter2 = new FileNameExtensionFilter("*.jpg", "JPG", "JPEG");
+    // FileNameExtensionFilter filter3 = new FileNameExtensionFilter("*.gif", "GIF");
+    // FileNameExtensionFilter filter4 = new FileNameExtensionFilter("*.bmp", "BMP");
+    chooser.addChoosableFileFilter(filter1);
+    // chooser.addChoosableFileFilter(filter2);
+    // chooser.addChoosableFileFilter(filter3);
+    // chooser.addChoosableFileFilter(filter4);
+    // chooser.setMultiSelectionEnabled(false);
+    int result = chooser.showSaveDialog(null);
+    if (result == JFileChooser.APPROVE_OPTION) {
+      File file = chooser.getSelectedFile();
+      if (file.exists()) {
+        int ret =
+            JOptionPane.showConfirmDialog(
+                null,
+                resourceBundle.getString("LizzieFrame.prompt.fileExists"),
+                "Warning",
+                JOptionPane.OK_CANCEL_OPTION);
+        if (ret == JOptionPane.CANCEL_OPTION) {
+          return;
+        }
+      }
+      String ext =
+          chooser.getFileFilter() instanceof FileNameExtensionFilter
+              ? ((FileNameExtensionFilter) chooser.getFileFilter()).getExtensions()[0].toLowerCase()
+              : "";
+      if (!Utils.isBlank(ext)) {
+        if (!file.getPath().toLowerCase().endsWith("." + ext)) {
+          // file = new File(file.getPath() + "." + ext);
+        }
+      }
+      /*BufferedImage bImg =
+          new BufferedImage(
+              boardRenderer.getBoardWidth(),
+              boardRenderer.getBoardWidth(),
+              BufferedImage.TYPE_INT_ARGB);
+      Graphics2D cg = bImg.createGraphics();
+      boardRenderer.setLocation(0, 0);
+      boardRenderer.draw(cg, false);
+      try {
+        ImageIO.write(bImg, ext, file);
+      } catch (IOException e) {
+        e.printStackTrace();
+      }*/
+      SVGGraphics2D svgGraphics2D =
+          new SVGGraphics2D(boardRenderer.getBoardWidth(), boardRenderer.getBoardWidth());
+      Point oldLocation = boardRenderer.getLocation();
+      boardRenderer.setLocation(0, 0);
+      boardRenderer.drawSVG(svgGraphics2D);
+      boardRenderer.setLocation(oldLocation.x, oldLocation.y);
+      String svgElement = svgGraphics2D.getSVGElement();
+      try {
+        SVGUtils.writeToSVG(new File(file.getPath()), svgElement);
+        System.out.println("made svg");
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }
+  };
 
   public void updateEngineMenu(List<Leelaz> engineList) {
     menu.updateEngineMenu(engineList);

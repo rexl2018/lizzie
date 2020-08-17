@@ -123,6 +123,39 @@ public class BoardRenderer {
     this.isMainBoard = isMainBoard;
   }
 
+  public void drawSVG(Graphics2D g) {
+    drawGoban(g, true);
+    if (Lizzie.config.showNameInBoard && isMainBoard) drawName(g);
+    drawSVGStones(g);
+
+    if (Lizzie.board != null && Lizzie.board.inScoreMode() && isMainBoard) {
+      drawScore(g);
+    } else {
+      drawSVGBranch(g);
+    }
+
+    if (!isShowingRawBoard()) {
+      drawMoveNumbers(g);
+      //        timer.lap("movenumbers");
+      List<TextData> textDatas = new ArrayList<>();
+      if (Lizzie.frame.isShowingPolicy) drawPolicy(g);
+      else if (!Lizzie.frame.isPlayingAgainstLeelaz && Lizzie.config.showBestMovesNow()) {
+        drawLeelazSuggestionsBackgroundShadow(g, textDatas);
+        drawLeelazSuggestionsBackgroundCircle(g, textDatas);
+      }
+
+      if (Lizzie.config.showNextMoves) {
+        drawNextMoves(g);
+      }
+
+      if (!Lizzie.frame.isShowingPolicy
+          && !Lizzie.frame.isPlayingAgainstLeelaz
+          && Lizzie.config.showBestMovesNow()) drawLeelazSuggestionsForeground(g, textDatas);
+
+      drawStoneMarkup(g);
+    }
+  }
+
   /** Draw a go board */
   public void draw(Graphics2D g) {
     //    setupSizeParameters();
@@ -231,10 +264,14 @@ public class BoardRenderer {
     setLocation(x + (boardWidth0 - boardWidth) / 2, y + (boardHeight0 - boardHeight) / 2);
   }
 
+  private void drawGoban(Graphics2D g0) {
+    drawGoban(g0, false);
+  }
+
   /**
    * Draw the green background and go board with lines. We cache the image for a performance boost.
    */
-  private void drawGoban(Graphics2D g0) {
+  private void drawGoban(Graphics2D g0, boolean drawSVG) {
     int width = Lizzie.frame.getWidth();
     int height = Lizzie.frame.getHeight();
 
@@ -257,11 +294,17 @@ public class BoardRenderer {
       cachedGhostShadow = null;
 
       cachedBackgroundImage = new BufferedImage(width, height, TYPE_INT_ARGB);
-      Graphics2D g = cachedBackgroundImage.createGraphics();
+      Graphics2D g;
+      if (!drawSVG) g = cachedBackgroundImage.createGraphics();
+      else g = g0;
       g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
       // Draw the wooden background
-      drawWoodenBoard(g);
+      if (!drawSVG) drawWoodenBoard(g);
+      else {
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+      }
 
       // Draw the lines
       g.setColor(Color.BLACK);
@@ -330,11 +373,12 @@ public class BoardRenderer {
       }
       g.dispose();
     }
-
-    g0.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_OFF);
-    g0.drawImage(cachedBackgroundImage, 0, 0, null);
-    cachedX = x;
-    cachedY = y;
+    if (!drawSVG) {
+      g0.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_OFF);
+      g0.drawImage(cachedBackgroundImage, 0, 0, null);
+      cachedX = x;
+      cachedY = y;
+    }
   }
 
   private void drawName(Graphics2D g0) {
@@ -452,6 +496,16 @@ public class BoardRenderer {
     }
   }
 
+  private void drawSVGStones(Graphics2D g0) {
+    for (int i = 0; i < Board.boardWidth; i++) {
+      for (int j = 0; j < Board.boardHeight; j++) {
+        int stoneX = scaledMarginWidth + squareWidth * i;
+        int stoneY = scaledMarginHeight + squareHeight * j;
+        drawSVGStone(g0, stoneX, stoneY, Lizzie.board.getStones()[Board.getIndex(i, j)], i, j);
+      }
+    }
+  }
+
   /** Draw the stones. We cache the image for a performance boost. */
   private void drawStones() {
     if (Lizzie.board == null) return;
@@ -527,6 +581,61 @@ public class BoardRenderer {
       }
     }
     g.dispose();
+  }
+
+  private void drawSVGBranch(Graphics2D g0) {
+    showingBranch = false;
+    branchOpt = Optional.empty();
+
+    if (Lizzie.frame.isPlayingAgainstLeelaz) {
+      return;
+    }
+
+    // Leela Zero isn't connected yet
+    if (Lizzie.leelaz == null) return;
+
+    // calculate best moves and branch
+    bestMoves = Lizzie.leelaz.getBestMoves();
+    if (Lizzie.config.showBestMovesByHold
+        && MoveData.getPlayouts(bestMoves) < Lizzie.board.getData().getPlayouts()) {
+      bestMoves = Lizzie.board.getData().bestMoves;
+    }
+
+    variationOpt = Optional.empty();
+
+    if (isMainBoard && (isShowingRawBoard() || !Lizzie.config.showBranchNow())) {
+      return;
+    }
+
+    Optional<MoveData> suggestedMove = (isMainBoard ? mouseOveredMove() : getBestMove());
+    if (!suggestedMove.isPresent()
+        || (!isMainBoard && Lizzie.frame.isAutoEstimating)
+        || (isMainBoard && Lizzie.frame.isShowingPolicy)) {
+      return;
+    }
+    List<String> variation = suggestedMove.get().variation;
+    Branch branch = new Branch(Lizzie.board, variation, displayedBranchLength);
+    branchOpt = Optional.of(branch);
+    variationOpt = Optional.of(variation);
+    showingBranch = true;
+
+    for (int i = 0; i < Board.boardWidth; i++) {
+      for (int j = 0; j < Board.boardHeight; j++) {
+        // Display latest stone for ghost dead stone
+        int index = Board.getIndex(i, j);
+        Stone stone = branch.data.stones[index];
+        boolean isGhost = (stone == Stone.BLACK_GHOST || stone == Stone.WHITE_GHOST);
+        if (Lizzie.board.getData().stones[index] != Stone.EMPTY && !isGhost) continue;
+        if (branch.data.moveNumberList[index] > maxBranchMoves()) continue;
+
+        int stoneX = scaledMarginWidth + squareWidth * i;
+        int stoneY = scaledMarginHeight + squareHeight * j;
+
+        drawSVGStone(g0, stoneX, stoneY, stone.unGhosted(), i, j);
+      }
+    }
+
+    g0.dispose();
   }
 
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
@@ -1227,6 +1336,20 @@ public class BoardRenderer {
     else g1.drawImage(cachedShadow, centerX - stoneCenter, centerY - stoneCenter, null);
   }
 
+  private void drawSVGStone(Graphics2D g, int centerX, int centerY, Stone color, int x, int y) {
+    if (color.isBlack() || color.isWhite()) {
+      boolean isBlack = color.isBlack();
+      boolean isGhost = (color == Stone.BLACK_GHOST || color == Stone.WHITE_GHOST);
+      Color blackColor = isGhost ? new Color(0, 0, 0) : Color.BLACK;
+      Color whiteColor = isGhost ? new Color(255, 255, 255) : Color.WHITE;
+      g.setColor(isBlack ? blackColor : whiteColor);
+      fillCircle(g, centerX, centerY, stoneRadius);
+      if (!isBlack) {
+        g.setColor(blackColor);
+        drawCircle(g, centerX, centerY, stoneRadius);
+      }
+    }
+  }
   /** Draws a stone centered at (centerX, centerY) */
   private void drawStone(
       Graphics2D g, Graphics2D gShadow, int centerX, int centerY, Stone color, int x, int y) {
@@ -1517,6 +1640,9 @@ public class BoardRenderer {
   public void setLocation(int x, int y) {
     this.x = x;
     this.y = y;
+    if (x != 0 || y != 0) {
+      cachedBackgroundImage = emptyImage;
+    }
   }
 
   public Point getLocation() {
@@ -1534,6 +1660,14 @@ public class BoardRenderer {
     this.boardHeight = boardHeight - 4 * shadowRadius;
     this.x = x + 2 * shadowRadius;
     this.y = y + 2 * shadowRadius;
+  }
+
+  public int getBoardWidth() {
+    return boardWidth;
+  }
+
+  public int getBoardHeight() {
+    return boardHeight;
   }
 
   public void setBoardParam(int[] param) {

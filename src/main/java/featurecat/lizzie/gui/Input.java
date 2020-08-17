@@ -304,7 +304,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         break;
 
       case VK_S:
-        if (e.isAltDown()) {
+        if (controlIsPressed(e) || e.isAltDown()) {
           Lizzie.frame.saveImage();
         } else {
           // stop the ponder
@@ -491,7 +491,11 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         break;
 
       case VK_R:
-        Lizzie.frame.replayBranch(e.isAltDown());
+        if (e.isControlDown()) {
+          Lizzie.frame.replayBranch(e.isAltDown());
+        } else {
+          Lizzie.frame.addSuggestionAsBranch();
+        }
         break;
 
       case VK_OPEN_BRACKET:
