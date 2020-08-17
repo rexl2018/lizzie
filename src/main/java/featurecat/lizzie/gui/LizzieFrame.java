@@ -1551,7 +1551,7 @@ public class LizzieFrame extends MainFrame {
       SVGGraphics2D svgGraphics2D =
           new SVGGraphics2D(boardRenderer.getBoardWidth(), boardRenderer.getBoardWidth());
       Point oldLocation = boardRenderer.getLocation();
-      boardRenderer.setLocation(0, 0);
+      boardRenderer.setLocation(-1, -1);
       boardRenderer.drawSVG(svgGraphics2D);
       boardRenderer.setLocation(oldLocation.x, oldLocation.y);
       String svgElement = svgGraphics2D.getSVGElement();

@@ -1638,11 +1638,13 @@ public class BoardRenderer {
    * @param y y coordinate
    */
   public void setLocation(int x, int y) {
-    this.x = x;
-    this.y = y;
-    if (x != 0 || y != 0) {
+    if (x == -1 && y == -1) { // come for svg saving
+      x = 0;
+      y = 0;
       cachedBackgroundImage = emptyImage;
     }
+    this.x = x;
+    this.y = y;
   }
 
   public Point getLocation() {
